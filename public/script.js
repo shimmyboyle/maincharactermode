@@ -76,14 +76,17 @@ async function startApp() {
 
     ws.onopen = () => {
         log("WebSocket Connected!");
-        document.getElementById("status").innerText = "Transmission Active";
+        document.getElementById("status").innerText = "Investigation Active";
         toggleButtons(true);
         isRunning = true;
         
         sendSetupMessage();
         
-
+        // 👇 Start the Video Stream
         startVideoLoop();
+        
+        // 👇 Start the Text Pulse (The "Kick")
+        setTimeout(() => startNarratorLoop(), 2000); 
     };
 
     ws.onmessage = async (event) => {
@@ -150,12 +153,14 @@ function sendSetupMessage() {
         "setup": {
             "model": MODEL,
             "generationConfig": {
-                "responseModalities": ["AUDIO"],
-                "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Puck" } } }
+                "responseModalities": ["AUDIO"], // We only want to hear him
+                "speechConfig": {
+                    "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Aoede" } } // Deep voice
+                }
             },
             "systemInstruction": {
                 "parts": [{ 
-                    "text": "You are a cynical, hard-boiled detective narrator in a 1940s noir novel. Narrate the video stream in real-time. Keep it punchy." 
+                    "text": "You are a noir detective narrator. Describe the visual scene in a gritty, cynical, 1940s private eye style. Keep it brief and punchy." 
                 }]
             }
         }
@@ -256,4 +261,30 @@ function base64ToArrayBuffer(base64) {
 function toggleButtons(on) {
     document.getElementById("startBtn").style.display = on ? "none" : "inline-block";
     document.getElementById("stopBtn").style.display = on ? "inline-block" : "none";
+}
+
+// 💓 THE NARRATOR PULSE
+// Since we have no microphone, we text the model every few seconds
+// to force it to generate a new description of the video.
+function startNarratorLoop() {
+    setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN && isRunning) {
+            
+            // Only prod if we aren't currently playing audio 
+            // (prevents the narrator from interrupting themselves too much)
+            if (audioCtx && audioCtx.state === 'running') {
+                const msg = {
+                    "clientContent": {
+                        "turns": [{
+                            "role": "user",
+                            "parts": [{ "text": "Describe the scene briefly." }]
+                        }],
+                        "turnComplete": true
+                    }
+                };
+                ws.send(JSON.stringify(msg));
+                if(Math.random() < 0.1) log("💓 Pulse sent");
+            }
+        }
+    }, 4000); // Pulse every 4 seconds
 }
