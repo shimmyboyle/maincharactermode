@@ -82,10 +82,6 @@ async function startApp() {
         
         sendSetupMessage();
         
-        // ⚡ KICKSTART: Send a text message to force the model to start speaking
-        setTimeout(() => {
-            log("Sending kickstart message...");
-        }, 1000);
 
         startVideoLoop();
     };
@@ -199,12 +195,23 @@ function startVideoLoop() {
 }
 
 function playAudioChunk(arrayBuffer) {
-    // Visual indicator
-    const indicator = document.getElementById("audio-indicator");
-    indicator.classList.add("speaking");
-    setTimeout(() => indicator.classList.remove("speaking"), 200);
-
+    // 1. Convert PCM to Float32
     const float32Data = pcm16ToFloat32(arrayBuffer);
+    
+    // 🔍 DEBUG: Check loudness
+    let maxVol = 0;
+    for (let i = 0; i < float32Data.length; i++) {
+        if (Math.abs(float32Data[i]) > maxVol) maxVol = Math.abs(float32Data[i]);
+    }
+    
+    // Log volume (only if it's actual sound)
+    if (maxVol > 0.01) {
+        log(`🔊 Playing Audio (Vol: ${maxVol.toFixed(2)})`);
+    } else {
+        log(`🔈 Received Silence/Empty Audio`);
+    }
+
+    // 2. Schedule Playback
     const buffer = audioCtx.createBuffer(1, float32Data.length, PCM_SAMPLE_RATE);
     buffer.getChannelData(0).set(float32Data);
     
