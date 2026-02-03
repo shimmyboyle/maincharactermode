@@ -39,17 +39,30 @@ async function startApp() {
     // 1. Initialize Audio Context
     try {
         log("Initializing Audio Context...");
+        
+        // 1. Let the OS decide the sample rate (Do not force PCM_SAMPLE_RATE here)
+        // iPhones prefer 44100/48000. We will handle the 24000 conversion later.
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // 🔊 CRITICAL: Force Resume if suspended
+        // 2. FORCE RESUME (Critical for Android/iOS)
         if (audioCtx.state === 'suspended') {
             await audioCtx.resume();
         }
+
+        // 3. THE "SILENT UNLOCK" (Critical for iOS)
+        // Play a tiny fraction of silence instantly to tell the browser 
+        // "I am intentionally playing audio."
+        const buffer = audioCtx.createBuffer(1, 1, 22050); 
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start(0);
         
-        nextAudioTime = audioCtx.currentTime;
-        log(`Audio Engine Started (State: ${audioCtx.state})`);
+        log(`Audio Engine Started (Rate: ${audioCtx.sampleRate}Hz)`);
+
     } catch (e) {
-        log("Audio Init Failed: " + e.message, true);
+        log("Audio Context Failed: " + e, true);
+        alert("Audio failed to start. Please touch the screen and try again.");
         return;
     }
 
@@ -153,14 +166,15 @@ function sendSetupMessage() {
         "setup": {
             "model": MODEL,
             "generationConfig": {
-                "responseModalities": ["AUDIO"], // We only want to hear him
+                "responseModalities": ["AUDIO"],
                 "speechConfig": {
-                    "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Aoede" } } // Deep voice
+                    "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Aoede" } }
                 }
             },
             "systemInstruction": {
                 "parts": [{ 
-                    "text": "You are a noir detective narrator. Describe the visual scene in a gritty, cynical, 1940s private eye style. Keep it brief and punchy." 
+                    // 👇 SHARPENED INSTRUCTION
+                    "text": "You are a cynical noir detective narrating your own life. You are looking at a video stream. Describe EXACTLY what you see (people, objects, text) but describe it with a gritty, 1940s metaphor. If you see nothing, complain about the darkness." 
                 }]
             }
         }
@@ -183,18 +197,35 @@ function sendTextMessage(text) {
 }
 
 function startVideoLoop() {
-    const video = document.getElementById("preview");
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    
     videoInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN && isRunning) {
-            canvas.width = video.videoWidth * 0.5;
-            canvas.height = video.videoHeight * 0.5;
+        if (ws && ws.readyState === WebSocket.OPEN && isRunning) {
+            const video = document.getElementById("preview");
+            
+            // 🛑 Safety Check: Don't send if camera isn't ready
+            if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+            // 📉 Resize Image (Drastically improves speed/accuracy)
+            const targetWidth = 512; 
+            const scaleFactor = targetWidth / video.videoWidth;
+            const targetHeight = video.videoHeight * scaleFactor;
+
+            const canvas = document.createElement("canvas");
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            
+            const ctx = canvas.getContext("2d");
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const base64Data = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+            
+            // Convert to Base64 (JPEG 50% quality is fine for AI)
+            const base64Data = canvas.toDataURL("image/jpeg", 0.5).split(",")[1];
+
             ws.send(JSON.stringify({
-                "realtimeInput": { "mediaChunks": [{ "mimeType": "image/jpeg", "data": base64Data }] }
+                "realtimeInput": { 
+                    "mediaChunks": [{ 
+                        "mimeType": "image/jpeg", 
+                        "data": base64Data 
+                    }] 
+                }
             }));
         }
     }, FPS_INTERVAL); 
@@ -271,13 +302,15 @@ function startNarratorLoop() {
         if (ws && ws.readyState === WebSocket.OPEN && isRunning) {
             
             // Only prod if we aren't currently playing audio 
-            // (prevents the narrator from interrupting themselves too much)
             if (audioCtx && audioCtx.state === 'running') {
                 const msg = {
                     "clientContent": {
                         "turns": [{
                             "role": "user",
-                            "parts": [{ "text": "Describe the scene briefly." }]
+                            "parts": [{ 
+                                // 👇 SHARPENED PROMPT
+                                "text": "Look at the image. Mention specific objects, colors, or lighting you see right now." 
+                            }]
                         }],
                         "turnComplete": true
                     }
@@ -286,5 +319,5 @@ function startNarratorLoop() {
                 if(Math.random() < 0.1) log("💓 Pulse sent");
             }
         }
-    }, 4000); // Pulse every 4 seconds
+    }, 4000); // 4 seconds
 }
