@@ -89,7 +89,12 @@ async function startApp() {
     ws.onmessage = async (event) => {
         let data = event.data;
         
-        // Handle JSON
+        // 1. If data is a Blob (Binary), convert it to Text first
+        if (data instanceof Blob) {
+            data = await data.text();
+        }
+        
+        // 2. Now process it as a JSON String
         if (typeof data === "string") {
             try {
                 const msg = JSON.parse(data);
@@ -105,25 +110,21 @@ async function startApp() {
                 if (msg.serverContent?.modelTurn?.parts) {
                     for (const part of msg.serverContent.modelTurn.parts) {
                         if (part.inlineData) {
-                            // 🔊 Log that we received data (only once every few seconds to avoid spam)
+                            // 🔊 Found the real audio!
                             if (Math.random() < 0.1) log("⬇ Received Audio Chunk");
                             playAudioChunk(base64ToArrayBuffer(part.inlineData.data));
                         }
                     }
                 }
                 
-                // Handle Turn Complete (Model finished a sentence)
+                // Handle Turn Complete
                 if (msg.serverContent?.turnComplete) {
                     log("✅ Model finished speaking turn.");
                 }
 
-            } catch(e) { /* Not JSON, ignore */ }
-        }
-        
-        // Handle Blob (Binary)
-        else if (data instanceof Blob) {
-            log("⬇ Received Binary Audio");
-            playAudioChunk(await data.arrayBuffer());
+            } catch(e) { 
+                log("Error parsing JSON: " + e.message, true);
+            }
         }
     };
     
