@@ -55,7 +55,7 @@ async function startApp() {
         // Relaxed constraints to avoid 'OverconstrainedError'
         mediaStream = await navigator.mediaDevices.getUserMedia({ 
             video: { width: { ideal: 640 }, facingMode: "environment" },
-            audio: true 
+            audio: false 
         });
         document.getElementById("preview").srcObject = mediaStream;
         log("Camera Active.");
