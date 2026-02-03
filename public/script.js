@@ -13,21 +13,20 @@ let videoInterval = null;
 let nextAudioTime = 0;
 let isRunning = false;
 
-// 🐞 DEBUG LOGGER (Prints to screen)
+// 🐞 DEBUG LOGGER
 function log(msg, isError = false) {
     const consoleDiv = document.getElementById("console-log");
     const line = document.createElement("div");
     line.style.color = isError ? "#ff5555" : "#00ff00";
     line.innerText = `> ${msg}`;
     consoleDiv.appendChild(line);
-    consoleDiv.scrollTop = consoleDiv.scrollHeight; // Auto scroll
-    console.log(msg); // Also log to real console
+    consoleDiv.scrollTop = consoleDiv.scrollHeight; 
+    console.log(msg); 
 }
 
 async function startApp() {
     log("Attempting to start...");
     
-    // 1. Get Password from input box (No popup!)
     const passwordField = document.getElementById("passwordInput");
     const password = passwordField.value.trim();
     
@@ -37,22 +36,26 @@ async function startApp() {
         return;
     }
 
-    // 2. Audio Context (Must happen immediately after click)
+    // 1. Initialize Audio Context
     try {
         log("Initializing Audio Context...");
         audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: PCM_SAMPLE_RATE });
-        await audioCtx.resume();
+        
+        // 🔊 CRITICAL: Force Resume if suspended
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
+        
         nextAudioTime = audioCtx.currentTime;
-        log("Audio Engine Started.");
+        log(`Audio Engine Started (State: ${audioCtx.state})`);
     } catch (e) {
         log("Audio Init Failed: " + e.message, true);
         return;
     }
 
-    // 3. Camera Access
+    // 2. Camera Access
     try {
         log("Requesting Camera...");
-        // Relaxed constraints to avoid 'OverconstrainedError'
         mediaStream = await navigator.mediaDevices.getUserMedia({ 
             video: { width: { ideal: 640 }, facingMode: "environment" },
             audio: false 
@@ -61,11 +64,10 @@ async function startApp() {
         log("Camera Active.");
     } catch (err) {
         log("Camera Error: " + err.name + " - " + err.message, true);
-        log("Try checking phone permissions.", true);
         return;
     }
 
-    // 4. Connect to Backend
+    // 3. Connect to Backend
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/?password=${encodeURIComponent(password)}`;
     
@@ -77,48 +79,62 @@ async function startApp() {
         document.getElementById("status").innerText = "Transmission Active";
         toggleButtons(true);
         isRunning = true;
+        
         sendSetupMessage();
+        
+        // ⚡ KICKSTART: Send a text message to force the model to start speaking
+        setTimeout(() => {
+            log("Sending kickstart message...");
+            sendTextMessage("Start narrating what you see now.");
+        }, 1000);
+
         startVideoLoop();
     };
 
     ws.onmessage = async (event) => {
         let data = event.data;
         
-        // Check for access denied JSON
-        try {
-            // Only try to parse if it looks like text (starts with {)
-            if (typeof data === "string" && data.startsWith("{")) {
-                const possibleJson = JSON.parse(data);
-                if (possibleJson.error) {
-                    log("Server Error: " + possibleJson.error, true);
+        // Handle JSON
+        if (typeof data === "string") {
+            try {
+                const msg = JSON.parse(data);
+                
+                // Handle Access Error
+                if (msg.error) {
+                    log("Server Error: " + msg.error, true);
                     stopApp();
                     return;
                 }
-            }
-        } catch(e) { /* Not JSON, ignore */ }
 
-        if (data instanceof Blob) {
-            playAudioChunk(await data.arrayBuffer());
-        } else {
-            // Handle Gemini JSON wrapper
-            const msg = JSON.parse(data);
-            if (msg.serverContent?.modelTurn?.parts) {
-                for (const part of msg.serverContent.modelTurn.parts) {
-                    if (part.inlineData) {
-                        playAudioChunk(base64ToArrayBuffer(part.inlineData.data));
+                // Handle Audio Data inside JSON
+                if (msg.serverContent?.modelTurn?.parts) {
+                    for (const part of msg.serverContent.modelTurn.parts) {
+                        if (part.inlineData) {
+                            // 🔊 Log that we received data (only once every few seconds to avoid spam)
+                            if (Math.random() < 0.1) log("⬇ Received Audio Chunk");
+                            playAudioChunk(base64ToArrayBuffer(part.inlineData.data));
+                        }
                     }
                 }
-            }
+                
+                // Handle Turn Complete (Model finished a sentence)
+                if (msg.serverContent?.turnComplete) {
+                    log("✅ Model finished speaking turn.");
+                }
+
+            } catch(e) { /* Not JSON, ignore */ }
+        }
+        
+        // Handle Blob (Binary)
+        else if (data instanceof Blob) {
+            log("⬇ Received Binary Audio");
+            playAudioChunk(await data.arrayBuffer());
         }
     };
     
     ws.onclose = (event) => {
         log(`Connection Closed (Code: ${event.code})`, true);
         stopApp();
-    };
-    
-    ws.onerror = (err) => {
-        log("WebSocket Error. Check connection.", true);
     };
 }
 
@@ -133,25 +149,36 @@ function stopApp() {
     log("App Stopped.");
 }
 
-// ... (Keep helper functions below: sendSetupMessage, startVideoLoop, playAudioChunk, etc.) ...
-// Just copy them from the previous script, they don't need changes.
-
 function sendSetupMessage() {
     const setup_msg = {
         "setup": {
             "model": MODEL,
-            "systemInstruction": {
-                "parts": [{ 
-                    "text": "You are a cynical, hard-boiled detective narrator in a 1940s noir novel. Narrate the video stream in real-time. Use slang like 'dame', 'shamus', 'two-bit'. Keep it punchy." 
-                }]
-            },
             "generationConfig": {
                 "responseModalities": ["AUDIO"],
                 "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Puck" } } }
+            },
+            "systemInstruction": {
+                "parts": [{ 
+                    "text": "You are a cynical, hard-boiled detective narrator in a 1940s noir novel. Narrate the video stream in real-time. Keep it punchy." 
+                }]
             }
         }
     };
     ws.send(JSON.stringify(setup_msg));
+}
+
+// 🆕 Helper to send text (kickstart)
+function sendTextMessage(text) {
+    const msg = {
+        "clientContent": {
+            "turns": [{
+                "role": "user",
+                "parts": [{ "text": text }]
+            }],
+            "turnComplete": true
+        }
+    };
+    ws.send(JSON.stringify(msg));
 }
 
 function startVideoLoop() {
@@ -173,12 +200,19 @@ function startVideoLoop() {
 }
 
 function playAudioChunk(arrayBuffer) {
+    // Visual indicator
+    const indicator = document.getElementById("audio-indicator");
+    indicator.classList.add("speaking");
+    setTimeout(() => indicator.classList.remove("speaking"), 200);
+
     const float32Data = pcm16ToFloat32(arrayBuffer);
     const buffer = audioCtx.createBuffer(1, float32Data.length, PCM_SAMPLE_RATE);
     buffer.getChannelData(0).set(float32Data);
+    
     const source = audioCtx.createBufferSource();
     source.buffer = buffer;
     source.connect(audioCtx.destination);
+    
     const currentTime = audioCtx.currentTime;
     if (nextAudioTime < currentTime) nextAudioTime = currentTime;
     source.start(nextAudioTime);
