@@ -1,0 +1,108 @@
+/* Noir Base Styling */
+body {
+    background-color: #0d0d0d;
+    color: #c0c0c0;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
+}
+
+h1 {
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-bottom: 1px solid #444;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+/* Lock Screen */
+#lock-screen {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: #000;
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.lock-box {
+    text-align: center;
+    border: 1px solid #444;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
+}
+
+input[type="password"] {
+    background: #222;
+    border: 1px solid #555;
+    color: white;
+    padding: 10px;
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+/* Video Container */
+#video-container {
+    position: relative;
+    width: 90%;
+    max-width: 400px;
+    border: 4px solid #333;
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    overflow: hidden;
+    margin-bottom: 15px;
+}
+
+video {
+    width: 100%;
+    display: block;
+    /* The Noir Filter: Black & White + High Contrast */
+    filter: grayscale(100%) contrast(120%);
+}
+
+/* Status & Visuals */
+#status {
+    font-size: 0.9rem;
+    color: #ff5555;
+    height: 20px;
+    margin-bottom: 10px;
+}
+
+#audio-indicator {
+    width: 12px;
+    height: 12px;
+    background: #333;
+    border-radius: 50%;
+    margin-bottom: 20px;
+    transition: background 0.1s;
+}
+
+#audio-indicator.speaking {
+    background: #00ff00;
+    box-shadow: 0 0 15px #00ff00;
+}
+
+/* Buttons */
+button {
+    padding: 15px 30px;
+    font-size: 1rem;
+    background: #222;
+    color: #ddd;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+}
+
+button:active { background: #444; }
+button.danger { background: #500; border-color: #800; }

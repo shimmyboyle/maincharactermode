@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🕵️ Noir Detective Live</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>The Private Eye</h1>
+    
+    <div id="video-container">
+        <video id="preview" autoplay playsinline muted></video>
+    </div>
+
+    <div id="status">Secure Line Ready.</div>
+    <div id="audio-indicator"></div>
+
+    <div class="controls">
+        <button id="startBtn" onclick="startApp()">Start Investigation</button>
+        <button id="stopBtn" onclick="stopApp()" style="display:none; background:#800;">End Case</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
