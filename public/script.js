@@ -85,7 +85,6 @@ async function startApp() {
         // ⚡ KICKSTART: Send a text message to force the model to start speaking
         setTimeout(() => {
             log("Sending kickstart message...");
-            sendTextMessage("Start narrating what you see now.");
         }, 1000);
 
         startVideoLoop();
@@ -222,8 +221,11 @@ function playAudioChunk(arrayBuffer) {
 function pcm16ToFloat32(buffer) {
     const dataView = new DataView(buffer);
     const float32 = new Float32Array(buffer.byteLength / 2);
+    
     for (let i = 0; i < float32.length; i++) {
-        float32[i] = dataView.getInt16(i * 2, true) / 32768;
+        // "true" forces Little Endian, which is standard for WAV/PCM
+        const int16 = dataView.getInt16(i * 2, true); 
+        float32[i] = int16 / 32768;
     }
     return float32;
 }
