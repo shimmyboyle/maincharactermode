@@ -3,12 +3,7 @@
 // ==========================================
 const PCM_SAMPLE_RATE = 24000;
 const MODEL = "models/gemini-2.0-flash-exp";
-
-// 🎞️ CAMERA SPEED SETTING
-// 1000 = 1 frame per second (Standard)
-// 2000 = 1 frame every 2 seconds (Slower, moodier, saves data)
-// 500  = 2 frames per second (Faster, more responsive)
-const FPS_INTERVAL = 250; 
+const FPS_INTERVAL = 1000; 
 
 // State variables
 let ws = null;
@@ -18,38 +13,68 @@ let videoInterval = null;
 let nextAudioTime = 0;
 let isRunning = false;
 
+// 🐞 DEBUG LOGGER (Prints to screen)
+function log(msg, isError = false) {
+    const consoleDiv = document.getElementById("console-log");
+    const line = document.createElement("div");
+    line.style.color = isError ? "#ff5555" : "#00ff00";
+    line.innerText = `> ${msg}`;
+    consoleDiv.appendChild(line);
+    consoleDiv.scrollTop = consoleDiv.scrollHeight; // Auto scroll
+    console.log(msg); // Also log to real console
+}
+
 async function startApp() {
-    // 🔒 ASK FOR PASSWORD
-    const password = prompt("Enter Case Password:");
-    if (!password) return; // Stop if cancelled
-
-    // 1. Audio Context
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: PCM_SAMPLE_RATE });
-    await audioCtx.resume();
-    nextAudioTime = audioCtx.currentTime;
-
-    // 2. Camera Access
-    try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: 640, facingMode: "environment" },
-            audio: false 
-        });
-        document.getElementById("preview").srcObject = mediaStream;
-    } catch (err) {
-        updateStatus("Camera Error: " + err.message);
+    log("Attempting to start...");
+    
+    // 1. Get Password from input box (No popup!)
+    const passwordField = document.getElementById("passwordInput");
+    const password = passwordField.value.trim();
+    
+    if (!password) {
+        log("Error: Password is empty.", true);
+        alert("Please enter a password.");
         return;
     }
 
-    // 3. Connect to Backend with Password
+    // 2. Audio Context (Must happen immediately after click)
+    try {
+        log("Initializing Audio Context...");
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: PCM_SAMPLE_RATE });
+        await audioCtx.resume();
+        nextAudioTime = audioCtx.currentTime;
+        log("Audio Engine Started.");
+    } catch (e) {
+        log("Audio Init Failed: " + e.message, true);
+        return;
+    }
+
+    // 3. Camera Access
+    try {
+        log("Requesting Camera...");
+        // Relaxed constraints to avoid 'OverconstrainedError'
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 640 }, facingMode: "environment" },
+            audio: false 
+        });
+        document.getElementById("preview").srcObject = mediaStream;
+        log("Camera Active.");
+    } catch (err) {
+        log("Camera Error: " + err.name + " - " + err.message, true);
+        log("Try checking phone permissions.", true);
+        return;
+    }
+
+    // 4. Connect to Backend
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Append password to the URL query string
     const wsUrl = `${protocol}//${window.location.host}/?password=${encodeURIComponent(password)}`;
     
-    updateStatus("Connecting to headquarters...");
+    log(`Connecting to Server...`);
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-        updateStatus("Connected. Narration starting...");
+        log("WebSocket Connected!");
+        document.getElementById("status").innerText = "Transmission Active";
         toggleButtons(true);
         isRunning = true;
         sendSetupMessage();
@@ -59,21 +84,23 @@ async function startApp() {
     ws.onmessage = async (event) => {
         let data = event.data;
         
-        // If the server sends an access denied JSON
+        // Check for access denied JSON
         try {
-            const possibleJson = JSON.parse(data);
-            if (possibleJson.error) {
-                alert(possibleJson.error);
-                stopApp();
-                return;
+            // Only try to parse if it looks like text (starts with {)
+            if (typeof data === "string" && data.startsWith("{")) {
+                const possibleJson = JSON.parse(data);
+                if (possibleJson.error) {
+                    log("Server Error: " + possibleJson.error, true);
+                    stopApp();
+                    return;
+                }
             }
-        } catch(e) {
-            // It wasn't JSON, continue processing as normal
-        }
+        } catch(e) { /* Not JSON, ignore */ }
 
         if (data instanceof Blob) {
             playAudioChunk(await data.arrayBuffer());
         } else {
+            // Handle Gemini JSON wrapper
             const msg = JSON.parse(data);
             if (msg.serverContent?.modelTurn?.parts) {
                 for (const part of msg.serverContent.modelTurn.parts) {
@@ -85,8 +112,14 @@ async function startApp() {
         }
     };
     
-    ws.onclose = () => stopApp();
-    ws.onerror = () => updateStatus("Connection Error.");
+    ws.onclose = (event) => {
+        log(`Connection Closed (Code: ${event.code})`, true);
+        stopApp();
+    };
+    
+    ws.onerror = (err) => {
+        log("WebSocket Error. Check connection.", true);
+    };
 }
 
 function stopApp() {
@@ -96,8 +129,12 @@ function stopApp() {
     if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
     if (audioCtx) audioCtx.close();
     toggleButtons(false);
-    updateStatus("Case Closed.");
+    document.getElementById("status").innerText = "Disconnected";
+    log("App Stopped.");
 }
+
+// ... (Keep helper functions below: sendSetupMessage, startVideoLoop, playAudioChunk, etc.) ...
+// Just copy them from the previous script, they don't need changes.
 
 function sendSetupMessage() {
     const setup_msg = {
@@ -122,7 +159,6 @@ function startVideoLoop() {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     
-    // Uses the FPS_INTERVAL variable defined at the top
     videoInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN && isRunning) {
             canvas.width = video.videoWidth * 0.5;
@@ -167,7 +203,6 @@ function base64ToArrayBuffer(base64) {
     return bytes.buffer;
 }
 
-function updateStatus(text) { document.getElementById("status").innerText = text; }
 function toggleButtons(on) {
     document.getElementById("startBtn").style.display = on ? "none" : "inline-block";
     document.getElementById("stopBtn").style.display = on ? "inline-block" : "none";
