@@ -39,7 +39,7 @@ async function startApp() {
     // 1. Initialize Audio Context
     try {
         log("Initializing Audio Context...");
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: PCM_SAMPLE_RATE });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         // 🔊 CRITICAL: Force Resume if suspended
         if (audioCtx.state === 'suspended') {
@@ -194,33 +194,39 @@ function startVideoLoop() {
     }, FPS_INTERVAL); 
 }
 
+// Replace the entire playAudioChunk function
+
 function playAudioChunk(arrayBuffer) {
     // 1. Convert PCM to Float32
     const float32Data = pcm16ToFloat32(arrayBuffer);
     
-    // 🔍 DEBUG: Check loudness
+    // 🔍 Debug Volume
     let maxVol = 0;
     for (let i = 0; i < float32Data.length; i++) {
         if (Math.abs(float32Data[i]) > maxVol) maxVol = Math.abs(float32Data[i]);
     }
-    
-    // Log volume (only if it's actual sound)
+
     if (maxVol > 0.01) {
-        log(`🔊 Playing Audio (Vol: ${maxVol.toFixed(2)})`);
+        // Log sparingly
+        if (Math.random() < 0.2) log(`🔊 Playing (Vol: ${maxVol.toFixed(2)})`);
     } else {
-        log(`🔈 Received Silence/Empty Audio`);
+        return; // Skip silence
     }
 
-    // 2. Schedule Playback
+    // 2. Create Buffer
+    // We create a buffer at 24000Hz because that is what Gemini sends.
+    // The AudioContext (running at 48000Hz) will automatically resample this to fit.
     const buffer = audioCtx.createBuffer(1, float32Data.length, PCM_SAMPLE_RATE);
     buffer.getChannelData(0).set(float32Data);
     
+    // 3. Play
     const source = audioCtx.createBufferSource();
     source.buffer = buffer;
     source.connect(audioCtx.destination);
     
     const currentTime = audioCtx.currentTime;
     if (nextAudioTime < currentTime) nextAudioTime = currentTime;
+    
     source.start(nextAudioTime);
     nextAudioTime += buffer.duration;
 }
