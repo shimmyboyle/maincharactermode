@@ -2,7 +2,7 @@
 // ⚙️ CONFIGURATION
 // ==========================================
 const PCM_SAMPLE_RATE = 24000;
-const MODEL = "models/gemini-2.0-flash-exp";
+const MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025";
 const FPS_INTERVAL = 1000; 
 
 // State variables
