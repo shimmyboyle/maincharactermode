@@ -3,7 +3,7 @@
 // ==========================================
 const PCM_SAMPLE_RATE = 24000;
 const MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025";
-const FPS_INTERVAL = 200; 
+const FPS_INTERVAL = 100; 
 
 // State variables
 let ws = null;
@@ -176,7 +176,7 @@ function startVideoLoop() {
             const video = document.getElementById("preview");
             if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
-            const targetWidth = 512; 
+            const targetWidth = 256; 
             const scaleFactor = targetWidth / video.videoWidth;
             const targetHeight = video.videoHeight * scaleFactor;
 
